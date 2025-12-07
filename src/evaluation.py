@@ -4,6 +4,7 @@ import re
 import pandas as pd
 import pyspark.sql
 
+#TODO
 def translate_sqlite_to_spark(sqlite_query):
     """
     Transpiles a SQLite query to Spark SQL.
@@ -29,6 +30,7 @@ def result_to_obj(s):
     return result
 
 
+#TODO
 def jaccard_index(df1, df2):
 
     """

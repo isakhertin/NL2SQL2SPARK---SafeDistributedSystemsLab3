@@ -24,7 +24,27 @@ def get_llm(
         model: The name of the language model to use.
         temperature: The temperature to use for the language model.
     """
-    pass
+    if provider in ("cloudflare", "workersai", "workers_ai", Provider.CLOUDFLARE.value if hasattr(Provider, "CLOUDFLARE") else "cloudflare"):
+        token = os.getenv("CLOUDFLARE_API_TOKEN")
+        account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+        if not token or not account_id:
+            raise ValueError(
+                "Cloudflare env vars missing. Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
+            )
+        
+        model = model or os.getenv(
+            "CLOUDFLARE_WORKERS_AI_MODEL",
+            "@cf/meta/llama-3.1-8b-instruct",
+        )
+
+        return ChatCloudflareWorkersAI(
+            account_id=account_id,
+            api_token=token,
+            model=model,
+            temperature=temperature,
+        )
+    
+    #TODO add extra llm support here:
 
 
 def get_cloudflare_neuron_pricing(model_name):

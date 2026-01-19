@@ -4,6 +4,9 @@ import re
 import sqlglot
 import pandas as pd
 import pyspark.sql
+import pyspark
+from pyspark.sql.dataframe import DataFrame as SparkDF
+
 
 #TODO
 def translate_sqlite_to_spark(sqlite_query):
@@ -48,7 +51,6 @@ def result_to_obj(s):
 
 #TODO
 def jaccard_index(df1, df2):
-
     """
     Calculates the Jaccard index between two dataframes.
 
@@ -56,62 +58,63 @@ def jaccard_index(df1, df2):
         df1: The first dataframe.
         df2: The second dataframe.
     """
-    def to_row_set(x):
-        # None -> empty
+    def normalize_value(v):
+        # Make values comparable across Row/tuple/dict formats
+        if v is None:
+            return None
+        # Spark often returns numpy types or decimals; stringify is safest for evaluation
+        return str(v)
+
+    def to_tuple_set(x):
+        # Spark DataFrame
+        try:
+            import pyspark.sql
+            if isinstance(x, pyspark.sql.dataframe.DataFrame):
+                return set(tuple(normalize_value(v) for v in row) for row in x.collect())
+        except Exception:
+            pass
+
         if x is None:
             return set()
 
-        # Spark DataFrame
-        if isinstance(x, pyspark.sql.dataframe.DataFrame):
-            rows = x.collect()
-            return {tuple(r) for r in rows}
-
-        # Pandas DataFrame
-        if isinstance(x, pd.DataFrame):
-            # Use tuples of row values (keep order of columns)
-            return {tuple(row) for row in x.itertuples(index=False, name=None)}
-
-        # Dict -> single row
-        if isinstance(x, dict):
-            # stable-ish representation
-            return {tuple(sorted(x.items()))}
-
-        # String that might be JSON / python literal
         if isinstance(x, str):
-            x = result_to_obj(x)
+            return set([(x.strip(),)]) if x.strip() else set()
 
-        # If already a list/tuple/set of rows
-        if isinstance(x, (list, tuple, set)):
-            s = set()
-            for row in x:
-                if row is None:
-                    continue
-                # Spark Row has asDict
-                if hasattr(row, "asDict"):
-                    s.add(tuple(sorted(row.asDict(recursive=True).items())))
-                elif isinstance(row, dict):
-                    s.add(tuple(sorted(row.items())))
-                elif isinstance(row, (list, tuple)):
-                    s.add(tuple(row))
-                else:
-                    # scalar
-                    s.add((row,))
-            return s
+        # List-like
+        if isinstance(x, list):
+            if len(x) == 0:
+                return set()
 
-        # Fallback: scalar
-        return {(x,)}
+            first = x[0]
 
-    A = to_row_set(df1)
-    B = to_row_set(df2)
+            # list of dict rows
+            if isinstance(first, dict):
+                # Sort keys to make deterministic tuple ordering
+                keys = sorted(first.keys())
+                return set(tuple(normalize_value(r.get(k)) for k in keys) for r in x)
 
-    # J(A,B) = |A∩B| / |A∪B|
-    union = A | B
-    if not union:
-        # both empty -> treat as perfect match
+            # list of tuples/lists
+            if isinstance(first, (tuple, list)):
+                return set(tuple(normalize_value(v) for v in r) for r in x)
+
+            # list of scalar values
+            return set([(normalize_value(v),) for v in x])
+
+        # Single tuple
+        if isinstance(x, tuple):
+            return set([tuple(normalize_value(v) for v in x)])
+
+        return set([(normalize_value(x),)])
+
+    gt_set = to_tuple_set(df1)
+    pred_set = to_tuple_set(df2)
+
+    if not gt_set and not pred_set:
         return 1.0
+    if not gt_set or not pred_set:
+        return 0.0
 
-    inter = A & B
-    return len(inter) / len(union)
+    return len(gt_set & pred_set) / len(gt_set | pred_set)
 
 # -----------------------------------------------------------------------------
 # Spider Evaluation Logic (adapted from https://github.com/taoyds/spider)

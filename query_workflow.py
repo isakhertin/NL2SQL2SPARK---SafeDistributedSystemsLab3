@@ -34,8 +34,14 @@ def benchmark_query(query_id, provider):
     golden_query_spark = translate_sqlite_to_spark(golden_query)
     print(f"--- Benchmarking Query ID {query_id} on Database '{database_name}' ---")
     load_tables(spark_session, database_name)
+    print("[DEBUG] Table spark session: ",spark_session.sql("SHOW TABLES").toPandas())
     spark_sql = get_spark_sql()
     llm = get_llm(provider=provider)
+
+    print("LLM object:", llm, type(llm))
+    print("QUERY ID: ", query_id)
+    print("PROVIDER: ", provider)
+
     agent = get_spark_agent(spark_sql, llm=llm)
     run_nl_query(agent, nl_query, llm=llm)
     json_result = process_result()

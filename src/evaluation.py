@@ -13,7 +13,22 @@ def translate_sqlite_to_spark(sqlite_query):
     Args:
         sqlite_query: A String with the SQLite query to transpile.
     """
-    pass
+    if sqlite_query is None:
+        return None
+
+    q = str(sqlite_query).strip()
+    if not q:
+        return None
+
+    # SQLGlot expects dialect names: read="sqlite", write="spark"
+    # This handles: quoting fixes, date functions mapping, etc.
+    try:
+        spark_sql = sqlglot.transpile(q, read="sqlite", write="spark")[0]
+    except Exception as e:
+        # Fail loudly so you notice translation problems early
+        raise ValueError(f"Failed to transpile SQLite -> Spark SQL.\nSQLite query: {q}\nError: {e}") from e
+
+    return spark_sql
 
 def result_to_obj(s):
     if s and isinstance(s, str):
@@ -41,7 +56,62 @@ def jaccard_index(df1, df2):
         df1: The first dataframe.
         df2: The second dataframe.
     """
-    pass
+    def to_row_set(x):
+        # None -> empty
+        if x is None:
+            return set()
+
+        # Spark DataFrame
+        if isinstance(x, pyspark.sql.dataframe.DataFrame):
+            rows = x.collect()
+            return {tuple(r) for r in rows}
+
+        # Pandas DataFrame
+        if isinstance(x, pd.DataFrame):
+            # Use tuples of row values (keep order of columns)
+            return {tuple(row) for row in x.itertuples(index=False, name=None)}
+
+        # Dict -> single row
+        if isinstance(x, dict):
+            # stable-ish representation
+            return {tuple(sorted(x.items()))}
+
+        # String that might be JSON / python literal
+        if isinstance(x, str):
+            x = result_to_obj(x)
+
+        # If already a list/tuple/set of rows
+        if isinstance(x, (list, tuple, set)):
+            s = set()
+            for row in x:
+                if row is None:
+                    continue
+                # Spark Row has asDict
+                if hasattr(row, "asDict"):
+                    s.add(tuple(sorted(row.asDict(recursive=True).items())))
+                elif isinstance(row, dict):
+                    s.add(tuple(sorted(row.items())))
+                elif isinstance(row, (list, tuple)):
+                    s.add(tuple(row))
+                else:
+                    # scalar
+                    s.add((row,))
+            return s
+
+        # Fallback: scalar
+        return {(x,)}
+
+    A = to_row_set(df1)
+    B = to_row_set(df2)
+
+    # J(A,B) = |A∩B| / |A∪B|
+    union = A | B
+    if not union:
+        # both empty -> treat as perfect match
+        return 1.0
+
+    inter = A & B
+    return len(inter) / len(union)
 
 # -----------------------------------------------------------------------------
 # Spider Evaluation Logic (adapted from https://github.com/taoyds/spider)

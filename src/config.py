@@ -1,7 +1,7 @@
 DB_PATH = "db"
 BENCHMARK_FILE = "dev.json"
 DEFAULT_TEMPERATURE = 0.0
-DEFAULT_PROMPT_SUFIX = ""
+DEFAULT_PROMPT_SUFIX = "You are an agent with access to tools.CRITICAL RULES: - Do NOT write Scala, Python, or pseudocode. - Do NOT describe steps. - You MUST call the tool 'query_sql_db' (or the Spark SQL execution tool available) exactly once to answer. - The tool input MUST be a single Spark SQL query string. - Use only tables and columns that exist. - After the tool returns, respond with the result only."
 SCHEMA_LOOP_COUNT = 3
 
 from enum import Enum

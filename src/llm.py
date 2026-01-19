@@ -43,9 +43,9 @@ def get_llm(
             model=model,
             temperature=temperature,
         )
-    
-    #TODO add extra llm support here:
-
+    elif provider == Provider.GOOGLE.value:
+        model = model or DEFAULT_MODELS[Provider.GOOGLE]
+        return ChatGoogleGenerativeAI(model=model, temperature=temperature)
 
 def get_cloudflare_neuron_pricing(model_name):
     account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")

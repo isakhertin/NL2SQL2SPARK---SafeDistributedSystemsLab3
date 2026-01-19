@@ -3,6 +3,7 @@ import time
 import json
 import datetime
 import uuid
+import os
 
 from pyspark.sql import SparkSession
 from langchain_core.callbacks import BaseCallbackHandler
@@ -101,7 +102,29 @@ def get_spark_session():
     """
     Creates a Spark session with SQLite access.
     """
-    pass
+    app_name = getattr(config, "SPARK_APP_NAME", "NL2SQL2SPARK")
+    master = getattr(config, "SPARK_MASTER", "local[*]")
+
+    builder = (
+        SparkSession.builder
+        .appName(app_name)
+        .master(master)
+        .config("spark.sql.session.timeZone", "UTC")
+        .config("spark.sql.shuffle.partitions", str(getattr(config, "SPARK_SHUFFLE_PARTITIONS", 8)))
+        .config("spark.sql.execution.arrow.pyspark.enabled", "true")
+    )
+
+    extra = os.getenv("SPARK_EXTRA_CONF")
+    if extra:
+        for kv in extra.split(","):
+            if "=" in kv:
+                k, v = kv.split("=", 1)
+                builder = builder.config(k.strip(), v.strip())
+
+    spark = builder.getOrCreate()
+    spark.sparkContext.setLogLevel(getattr(config, "SPARK_LOG_LEVEL", "WARN"))
+
+    return spark
 
 
 def get_schema_manually(self, table_names):
@@ -139,7 +162,16 @@ def run_sparksql_query(spark_session, query):
         spark_session: Spark session to run the query on.
         query: A string with the Spark SQL query to run.
     """
-    pass
+    print("[DEBUG] run_sparksql_query called")
+
+    if query is None:
+        raise ValueError("Query is None.")
+
+    q = str(query).strip()
+    if not q:
+        raise ValueError("Query is empty.")
+
+    return spark_session.sql(q)
 
 
 def get_spark_agent(spark_sql, llm):
@@ -183,8 +215,9 @@ def get_spark_agent(spark_sql, llm):
     toolkit = SparkSQLToolkit(db=spark_sql, llm=llm)
     agent = create_spark_sql_agent(
         llm=llm,
-        toolkit=toolkit, verbose=True,
-        handle_parsing_errors=parsing_error_handler
+        toolkit=toolkit,
+        verbose=True,
+        handle_parsing_errors=True,  
     )
 
     return agent

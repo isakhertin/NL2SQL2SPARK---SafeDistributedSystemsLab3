@@ -61,7 +61,7 @@ def benchmark_query(query_id, provider):
         inferred_result = json_result["query_result"]
         ea = jaccard_index(ground_truth_df, inferred_result)
         print(f"Jaccard Index: {ea}")
-        print("Inffered result\n",inferred_result)
+        #print("Inffered result\n",inferred_result)
 
         # Structural Accuracy        
         spark_sql_query = json_result.get("sparksql_query")
